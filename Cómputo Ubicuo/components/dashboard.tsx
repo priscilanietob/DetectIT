@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { XrayViewerWithMagnifier } from "@/components/xray-viewer"
 import { ChatSidebar } from "@/components/chat-sidebar"
@@ -24,11 +24,38 @@ import {
 
 type Page = "dashboard" | "doctor" | "patient" | "expedient"
 
+interface CnnResult {
+  class_name: string
+  confidence: number
+  probabilities: Record<string, number>
+  cnn_summary: string
+}
+
 export function Dashboard() {
   const { userEmail, logout } = useAuth()
-  const [hasImage, setHasImage] = useState(false)
+  const [hasImage, setHasImage]     = useState(false)
+  const [imageData, setImageData]   = useState<string | null>(null)
+  const [cnnResult, setCnnResult]   = useState<CnnResult | null>(null)
   const [currentPage, setCurrentPage] = useState<Page>("dashboard")
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  const handleImageUpload = useCallback(async (file: File, dataUrl: string) => {
+    setHasImage(true)
+    setImageData(dataUrl)
+    setCnnResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/predict", { method: "POST", body: formData })
+      if (res.ok) {
+        const data: CnnResult = await res.json()
+        setCnnResult(data)
+      }
+    } catch {
+      // Python CNN server not running — chat still works via Gemini vision
+    }
+  }, [])
 
   const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
     { id: "dashboard", label: "Análisis", icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -160,24 +187,32 @@ export function Dashboard() {
       <main className="flex-1 flex overflow-hidden">
         {/* Xray viewer with magnifier */}
         <div className="flex-1 p-4">
-          <XrayViewerWithMagnifier onImageUpload={() => setHasImage(true)} />
+          <XrayViewerWithMagnifier onImageUpload={handleImageUpload} />
         </div>
 
         {/* Chat sidebar — desktop */}
         <div className="w-[380px] border-l border-border p-4 hidden lg:block">
-          <ChatSidebar hasImage={hasImage} />
+          <ChatSidebar hasImage={hasImage} imageData={imageData} cnnResult={cnnResult} />
         </div>
       </main>
 
       {/* Mobile floating chat button */}
       <div className="lg:hidden fixed bottom-4 right-4">
-        <MobileChatButton hasImage={hasImage} />
+        <MobileChatButton hasImage={hasImage} imageData={imageData} cnnResult={cnnResult} />
       </div>
     </div>
   )
 }
 
-function MobileChatButton({ hasImage }: { hasImage: boolean }) {
+function MobileChatButton({
+  hasImage,
+  imageData,
+  cnnResult,
+}: {
+  hasImage: boolean
+  imageData: string | null
+  cnnResult: CnnResult | null
+}) {
   const [isOpen, setIsOpen] = useState(false)
   return (
     <>
@@ -200,7 +235,7 @@ function MobileChatButton({ hasImage }: { hasImage: boolean }) {
               >
                 Close
               </Button>
-              <ChatSidebar hasImage={hasImage} />
+              <ChatSidebar hasImage={hasImage} imageData={imageData} cnnResult={cnnResult} />
             </div>
           </div>
         </div>

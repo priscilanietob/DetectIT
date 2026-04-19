@@ -10,7 +10,7 @@ import {
 } from "lucide-react"
 
 interface XrayViewerProps {
-  onImageUpload?: (file: File) => void
+  onImageUpload?: (file: File, dataUrl: string) => void
 }
 
 const MAGNIFIER_SIZE = 160
@@ -36,11 +36,12 @@ export function XrayViewerWithMagnifier({ onImageUpload }: XrayViewerProps) {
     if (file) {
       const reader = new FileReader()
       reader.onload = (ev) => {
-        setImage(ev.target?.result as string)
+        const dataUrl = ev.target?.result as string
+        setImage(dataUrl)
         setZoom(100); setPosition({ x: 0, y: 0 }); setRotation(0)
+        onImageUpload?.(file, dataUrl)
       }
       reader.readAsDataURL(file)
-      onImageUpload?.(file)
     }
   }
 

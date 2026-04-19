@@ -3,11 +3,10 @@
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Spinner } from "@/components/ui/spinner"
 import {
-  Send, Bot, User, Stethoscope, AlertCircle, Info
+  Send, Bot, User, Stethoscope, AlertCircle, Info, Brain
 } from "lucide-react"
 
 interface Message {
@@ -17,31 +16,74 @@ interface Message {
   timestamp: Date
 }
 
-interface ChatSidebarProps {
-  hasImage: boolean
+interface CnnResult {
+  class_name: string
+  confidence: number
+  probabilities: Record<string, number>
+  cnn_summary: string
 }
 
-export function ChatSidebar({ hasImage }: ChatSidebarProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "Hello! I'm your AI diagnostic assistant. Upload an X-ray image and I'll help you analyze it. You can ask me questions about the image or request specific area analysis.",
-      timestamp: new Date(),
-    },
-  ])
-  const [input, setInput] = useState("")
+interface ChatSidebarProps {
+  hasImage: boolean
+  imageData?: string | null
+  cnnResult?: CnnResult | null
+}
+
+const INITIAL_MESSAGE: Message = {
+  id: "init",
+  role: "assistant",
+  content:
+    "Hola, soy tu asistente de diagnóstico por IA. Sube una radiografía y te ayudaré a interpretarla. Si el servidor CNN está activo, también recibirás el análisis automático del modelo con sus probabilidades de confianza.",
+  timestamp: new Date(),
+}
+
+function ConfidenceBadge({ confidence }: { confidence: number }) {
+  const pct   = Math.round(confidence * 100)
+  const color =
+    pct >= 85 ? "text-green-400" :
+    pct >= 60 ? "text-yellow-400" :
+                "text-red-400"
+  return <span className={`font-semibold ${color}`}>{pct}%</span>
+}
+
+export function ChatSidebar({ hasImage, imageData, cnnResult }: ChatSidebarProps) {
+  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
+  const [input, setInput]       = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef       = useRef<HTMLTextAreaElement>(null)
 
-  // auto scroll to bottom whenever messages change
+  // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, isLoading])
 
-  // auto grow textarea height
+  // When a new CNN result arrives, inject a summary message automatically
+  useEffect(() => {
+    if (!cnnResult) return
+    const pct = Math.round(cnnResult.confidence * 100)
+    const autoMsg: Message = {
+      id:        `cnn-${Date.now()}`,
+      role:      "assistant",
+      content:
+        `Resultado del modelo CNN:\n` +
+        `• Clasificación: **${cnnResult.class_name}**\n` +
+        `• Confianza: ${pct}%\n` +
+        `• Nódulo: ${Math.round(cnnResult.probabilities["nodule"] * 100)}% | ` +
+        `Masa: ${Math.round(cnnResult.probabilities["mass"] * 100)}% | ` +
+        `Normal: ${Math.round(cnnResult.probabilities["normal"] * 100)}%\n\n` +
+        `Puedes preguntarme qué significa esto clínicamente o pedirme que analice la imagen.`,
+      timestamp: new Date(),
+    }
+    setMessages((prev) => {
+      // avoid duplicates if effect fires twice
+      if (prev.some((m) => m.id.startsWith("cnn-"))) return prev
+      return [...prev, autoMsg]
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cnnResult])
+
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)
     const el = e.target
@@ -49,35 +91,64 @@ export function ChatSidebar({ hasImage }: ChatSidebarProps) {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`
   }
 
-  const simulateResponse = async (userMessage: string): Promise<string> => {
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    if (!hasImage) return "Please upload an X-ray image first so I can provide a detailed analysis."
-    return "Simulated response: this is a demo :D."
+  const callChat = async (userMessage: string): Promise<string> => {
+    // Build history from current messages (skip init + CNN auto-messages)
+    const history = messages
+      .filter((m) => m.id !== "init" && !m.id.startsWith("cnn-"))
+      .map((m) => ({ role: m.role, content: m.content }))
+
+    const res = await fetch("/api/chat", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        message:   userMessage,
+        imageData: imageData ?? null,
+        cnnResult: cnnResult ?? null,
+        history,
+      }),
+    })
+
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error ?? "Error desconocido")
+    return data.response as string
   }
 
   const handleSubmit = async () => {
     if (!input.trim() || isLoading) return
 
     const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: input.trim(),
+      id:        Date.now().toString(),
+      role:      "user",
+      content:   input.trim(),
       timestamp: new Date(),
     }
 
     setMessages((prev) => [...prev, userMessage])
     setInput("")
-    // reset text area height
-    if (inputRef.current) {
-      inputRef.current.style.height = "auto"
-    }
+    if (inputRef.current) inputRef.current.style.height = "auto"
     setIsLoading(true)
 
     try {
-      const response = await simulateResponse(userMessage.content)
+      const response = await callChat(userMessage.content)
       setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 1).toString(), role: "assistant", content: response, timestamp: new Date() },
+        {
+          id:        (Date.now() + 1).toString(),
+          role:      "assistant",
+          content:   response,
+          timestamp: new Date(),
+        },
+      ])
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error desconocido"
+      setMessages((prev) => [
+        ...prev,
+        {
+          id:        (Date.now() + 1).toString(),
+          role:      "assistant",
+          content:   `⚠️ ${msg}`,
+          timestamp: new Date(),
+        },
       ])
     } finally {
       setIsLoading(false)
@@ -86,7 +157,6 @@ export function ChatSidebar({ hasImage }: ChatSidebarProps) {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // send on Enter 
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSubmit()
@@ -100,10 +170,17 @@ export function ChatSidebar({ hasImage }: ChatSidebarProps) {
         <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary">
           <Stethoscope className="w-5 h-5 text-primary-foreground" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h2 className="font-semibold text-card-foreground">AI Diagnostic Assistant</h2>
-          <p className="text-xs text-muted-foreground">Powered by medical AI</p>
+          <p className="text-xs text-muted-foreground">Llama 4 · Especializado en radiología</p>
         </div>
+        {cnnResult && (
+          <div className="flex items-center gap-1 text-xs bg-primary/10 border border-primary/20 rounded-md px-2 py-1">
+            <Brain className="w-3 h-3 text-primary" />
+            <span className="text-primary font-medium">CNN</span>
+            <ConfidenceBadge confidence={cnnResult.confidence} />
+          </div>
+        )}
       </div>
 
       {/* Disclaimer */}
@@ -112,12 +189,13 @@ export function ChatSidebar({ hasImage }: ChatSidebarProps) {
           <div className="flex gap-2">
             <AlertCircle className="w-4 h-4 text-accent shrink-0 mt-0.5" />
             <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Disclaimer:</span> This AI assistant provides educational insights only. All findings must be verified by a qualified radiologist.
+              <span className="font-medium text-foreground">Aviso:</span> Este asistente es solo de apoyo educativo. Todos los hallazgos deben ser verificados por un radiólogo certificado.
             </p>
           </div>
         </div>
       </div>
 
+      {/* Messages */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
         <div className="flex flex-col gap-4">
           {messages.map((message) => (
@@ -153,7 +231,7 @@ export function ChatSidebar({ hasImage }: ChatSidebarProps) {
               <div className="flex-1 rounded-lg p-3 bg-secondary">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Spinner className="w-4 h-4" />
-                  <span className="text-sm">Analyzing...</span>
+                  <span className="text-sm">Analizando…</span>
                 </div>
               </div>
             </div>
@@ -163,13 +241,21 @@ export function ChatSidebar({ hasImage }: ChatSidebarProps) {
         </div>
       </div>
 
+      {/* Status bar */}
       <div className="px-3 py-2 border-t border-border shrink-0">
         <div className={`flex items-center gap-2 text-xs ${hasImage ? "text-accent" : "text-muted-foreground"}`}>
           <Info className="w-3 h-3" />
-          <span>{hasImage ? "X-ray image loaded and ready for analysis" : "No image uploaded yet"}</span>
+          <span>
+            {hasImage
+              ? cnnResult
+                ? `Imagen cargada · CNN: ${cnnResult.class_name} (${Math.round(cnnResult.confidence * 100)}%)`
+                : "Imagen cargada · esperando resultado CNN…"
+              : "Sin imagen — sube una radiografía para análisis completo"}
+          </span>
         </div>
       </div>
 
+      {/* Input */}
       <div className="p-3 border-t border-border bg-secondary/20 shrink-0">
         <div className="flex gap-2 items-end">
           <textarea
@@ -177,7 +263,7 @@ export function ChatSidebar({ hasImage }: ChatSidebarProps) {
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about the X-ray…  (Enter to send, Shift+Enter for newline)"
+            placeholder="Pregunta sobre la radiografía…  (Enter para enviar)"
             disabled={isLoading}
             rows={1}
             className="flex-1 resize-none overflow-y-auto bg-input border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
