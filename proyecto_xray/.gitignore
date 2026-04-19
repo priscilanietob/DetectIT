@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pt
+*.pth
+data/
+resultados/
+*.png
+*.jpg
+*.jpeg
+.env
