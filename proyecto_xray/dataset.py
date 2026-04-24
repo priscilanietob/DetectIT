@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torchvision import transforms
 from PIL import Image
 import numpy as np
@@ -35,20 +35,17 @@ def get_transforms(split: str, image_size: int = 224):
             transforms.Resize((image_size + 20, image_size + 20)),
             transforms.RandomCrop(image_size),
             transforms.RandomHorizontalFlip(),
-            transforms.RandomRotation(10),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2),
+            transforms.RandomRotation(15),
             transforms.ToTensor(),                   # (1, H, W) en [0, 1]
-            transforms.Normalize(mean=[0.5], std=[0.5]),  # → [-1, 1]
-            transforms.RandomVerticalFlip(),
-            transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
-            transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+            transforms.Normalize(mean=[0.485], std=[0.229]),  # → distribución ImageNet
+            transforms.RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1)),
         ])
     else:  # val / test
         return transforms.Compose([
             transforms.Grayscale(num_output_channels=1),
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5], std=[0.5]),
+            transforms.Normalize(mean=[0.485], std=[0.229]),
         ])
 
 
@@ -125,6 +122,14 @@ class XRayDataset(Dataset):
         # Canal 1: máscara ROI o ceros
         mask_tensor = self._load_mask(img_path)  # (1, H, W)
 
+        # ROI dropout (solo en train)
+        if self.split == "train":
+            if torch.rand(1).item() < 0.5:
+                mask_tensor = torch.zeros_like(mask_tensor)
+
+        # Escalar ROI a mismo rango que imagen normalizada (~[-1,1])
+        mask_tensor = (mask_tensor - 0.5) / 0.5
+
         # Concatenar → (2, H, W)
         two_channel = torch.cat([img_tensor, mask_tensor], dim=0)
 
@@ -160,11 +165,31 @@ def get_dataloaders(
             image_size=image_size,
             mask_dir=mask_dir,
         )
-        shuffle = split == "train"
+
+        if split == "train":
+            labels = [label for _, label in dataset.samples]
+
+            class_counts = np.bincount(labels)
+            class_weights = 1.0 / class_counts
+
+            sample_weights = [class_weights[label] for label in labels]
+
+            sampler = WeightedRandomSampler(
+                sample_weights,
+                num_samples=len(sample_weights),
+                replacement=True
+            )
+
+            shuffle = False
+        else:
+            sampler = None
+            shuffle = False
+
         loaders[split] = DataLoader(
             dataset,
             batch_size=batch_size,
             shuffle=shuffle,
+            sampler=sampler,
             num_workers=num_workers,
             pin_memory=torch.cuda.is_available(),
         )

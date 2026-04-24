@@ -57,10 +57,10 @@ class XRayDenseNet(nn.Module):
         # 4. Clasificador propio 
         in_features = backbone.classifier.in_features  # 1024
         self.classifier = nn.Sequential(
-            nn.Dropout(p=0.5),
+            nn.Dropout(p=0.6),
             nn.Linear(in_features, 256),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=0.3),
+            nn.Dropout(p=0.4),
             nn.Linear(256, num_classes),
         )
 

@@ -18,6 +18,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from model import XRayDenseNet, CLASSES, NUM_CLASSES
 from dataset import get_dataloaders
 
+from sklearn.metrics import classification_report
+
 # Entrenamiento de una época
 def train_epoch(model, loader, criterion, optimizer, device):
     model.train()
@@ -46,6 +48,9 @@ def evaluate(model, loader, criterion, device):
     model.eval()
     total_loss, correct, total = 0.0, 0, 0
 
+    all_preds = []
+    all_labels = []
+
     for images, labels in loader:
         images, labels = images.to(device), labels.to(device)
         logits = model(images)
@@ -55,6 +60,12 @@ def evaluate(model, loader, criterion, device):
         preds = logits.argmax(dim=1)
         correct += (preds == labels).sum().item()
         total += images.size(0)
+
+        all_preds.extend(preds.cpu().numpy())
+        all_labels.extend(labels.cpu().numpy())
+
+    print("\nClassification Report:")
+    print(classification_report(all_labels, all_preds, target_names=CLASSES))
 
     return total_loss / total, correct / total
 
@@ -79,7 +90,17 @@ def train(args):
     # Una vez que superes 72% puedes cambiar a:
     # class_weights = torch.tensor([1.3, 1.2, 0.9], device=device)
     # criterion = nn.CrossEntropyLoss(weight=class_weights)
-    criterion = nn.CrossEntropyLoss()
+    # Pesos inversamente proporcionales a la frecuencia de cada clase
+    # nodule: 3797, mass: 4047, normal: 10500  →  total: 18344
+    total = 18344
+    class_weights = torch.tensor([
+        total / (3 * 3797),   # nodule  → 1.609
+        total / (3 * 4047),   # mass    → 1.510
+        total / (3 * 10500),  # normal  → 0.582
+    ], device = torch.device(device))
+
+    class_weights = torch.tensor([1.2, 1.1, 0.8], device=device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
 
     # Inicializar best_val_acc y optimizador según si hay resume o no
     save_path = Path(args.save_dir)
@@ -92,10 +113,10 @@ def train(args):
         best_val_acc = checkpoint.get("val_acc", 0.0)
         print(f"Reanudando desde checkpoint (val_acc={best_val_acc:.4f})")
 
-        # Fine-tuning completo desde el inicio, LR conservador
+        # Fine-tuning completo desde el inicio, LR correcto
         for param in model.features.parameters():
             param.requires_grad = True
-        optimizer = optim.AdamW(model.parameters(), lr=args.lr * 0.1, weight_decay=1e-4)
+        optimizer = optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-4)
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     else:
@@ -106,7 +127,7 @@ def train(args):
             param.requires_grad = False
         optimizer = optim.AdamW(
             filter(lambda p: p.requires_grad, model.parameters()),
-            lr=args.lr,
+            lr=5e-5,
             weight_decay=1e-4,
         )
         scheduler = CosineAnnealingLR(optimizer, T_max=args.warmup_epochs)
@@ -121,7 +142,7 @@ def train(args):
                 param.requires_grad = True
             optimizer = optim.AdamW(
                 model.parameters(),
-                lr=args.lr * 0.1,
+                lr=5e-5,
                 weight_decay=1e-4,
             )
             scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs - args.warmup_epochs)

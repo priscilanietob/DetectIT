@@ -4,6 +4,8 @@ Carga un modelo entrenado, procesa una imagen y devuelve:
   - Clase predicha + probabilidades
   - Imagen con Grad-CAM superpuesto (guardada como PNG)
   - Diccionario listo para pasarse al módulo de chat/LLM
+
+  python inference.py --model checkpoints/best_model.pt --image data/test/nodule/00000061_000.png
 """
 
 import argparse
