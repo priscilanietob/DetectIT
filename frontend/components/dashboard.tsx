@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { XrayViewerWithMagnifier } from "@/components/xray-viewer"
 import { ChatSidebar } from "@/components/chat-sidebar"
@@ -19,7 +19,7 @@ import {
   FileText,
   LayoutDashboard,
   Menu,
-  X
+  X,
 } from "lucide-react"
 
 type Page = "dashboard" | "doctor" | "patient" | "expedient"
@@ -29,18 +29,19 @@ export function Dashboard() {
   const [hasImage, setHasImage] = useState(false)
   const [currentPage, setCurrentPage] = useState<Page>("dashboard")
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [diagnosis, setDiagnosis] = useState<string | null>(null)
 
-  const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
+  const navItems: { id: Page; label: string; icon: ReactNode }[] = [
     { id: "dashboard", label: "Análisis", icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: "doctor", label: "Mi perfil", icon: <User className="w-4 h-4" /> },
     { id: "patient", label: "Paciente", icon: <Users className="w-4 h-4" /> },
     { id: "expedient", label: "Expediente", icon: <FileText className="w-4 h-4" /> },
   ]
 
-  // Full-page views
   if (currentPage === "doctor") {
     return <DoctorProfile onBack={() => setCurrentPage("dashboard")} />
   }
+
   if (currentPage === "patient") {
     return (
       <PatientProfile
@@ -49,14 +50,13 @@ export function Dashboard() {
       />
     )
   }
+
   if (currentPage === "expedient") {
     return <PatientExpedient onBack={() => setCurrentPage("patient")} />
   }
 
-  // Main dashboard
   return (
     <div className="flex flex-col h-screen bg-background">
-      {/* Top Navigation */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary">
@@ -68,9 +68,8 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Desktop nav tabs */}
         <nav className="hidden md:flex items-center gap-1 bg-secondary/30 p-1 rounded-lg">
-          {navItems.map(item => (
+          {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setCurrentPage(item.id)}
@@ -96,7 +95,9 @@ export function Dashboard() {
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hidden sm:flex">
             <Settings className="w-5 h-5" />
           </Button>
+
           <div className="w-px h-6 bg-border mx-1 hidden sm:block" />
+
           <div className="hidden sm:flex items-center gap-3">
             <div className="text-right">
               <p className="text-sm font-medium text-foreground">Medical Professional</p>
@@ -113,25 +114,26 @@ export function Dashboard() {
             </Button>
           </div>
 
-          {/* Mobile menu button */}
           <Button
             variant="ghost"
             size="icon"
             className="md:hidden"
-            onClick={() => setMobileNavOpen(v => !v)}
+            onClick={() => setMobileNavOpen((v) => !v)}
           >
             {mobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </Button>
         </div>
       </header>
 
-      {/* Mobile nav drawer */}
       {mobileNavOpen && (
         <div className="md:hidden border-b border-border bg-card px-4 py-3 flex flex-col gap-2">
-          {navItems.map(item => (
+          {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => { setCurrentPage(item.id); setMobileNavOpen(false) }}
+              onClick={() => {
+                setCurrentPage(item.id)
+                setMobileNavOpen(false)
+              }}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                 currentPage === item.id
                   ? "bg-secondary text-foreground"
@@ -142,6 +144,7 @@ export function Dashboard() {
               {item.label}
             </button>
           ))}
+
           <div className="border-t border-border pt-2 mt-1">
             <p className="text-xs text-muted-foreground mb-2">{userEmail}</p>
             <Button
@@ -158,36 +161,40 @@ export function Dashboard() {
       )}
 
       <main className="flex-1 flex overflow-hidden">
-        {/* Xray viewer with magnifier */}
         <div className="flex-1 p-4">
-          <XrayViewerWithMagnifier onImageUpload={() => setHasImage(true)} />
+          <XrayViewerWithMagnifier
+            onImageUpload={() => setHasImage(true)}
+            onPredictionResult={(diagnosisText) => setDiagnosis(diagnosisText)}
+          />
         </div>
 
-        {/* Chat sidebar — desktop */}
         <div className="w-[380px] border-l border-border p-4 hidden lg:block">
-          <ChatSidebar hasImage={hasImage} />
+          <ChatSidebar hasImage={hasImage} diagnosis={diagnosis} />
         </div>
       </main>
 
-      {/* Mobile floating chat button */}
       <div className="lg:hidden fixed bottom-4 right-4">
-        <MobileChatButton hasImage={hasImage} />
+        <MobileChatButton hasImage={hasImage} diagnosis={diagnosis} />
       </div>
     </div>
   )
 }
 
-function MobileChatButton({ hasImage }: { hasImage: boolean }) {
+function MobileChatButton({
+  hasImage,
+  diagnosis,
+}: {
+  hasImage: boolean
+  diagnosis: string | null
+}) {
   const [isOpen, setIsOpen] = useState(false)
+
   return (
     <>
-      <Button
-        size="lg"
-        className="rounded-full w-14 h-14 shadow-lg"
-        onClick={() => setIsOpen(true)}
-      >
+      <Button size="lg" className="rounded-full w-14 h-14 shadow-lg" onClick={() => setIsOpen(true)}>
         <Scan className="w-6 h-6" />
       </Button>
+
       {isOpen && (
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
           <div className="fixed inset-x-4 bottom-4 top-20 z-50">
@@ -200,7 +207,8 @@ function MobileChatButton({ hasImage }: { hasImage: boolean }) {
               >
                 Close
               </Button>
-              <ChatSidebar hasImage={hasImage} />
+
+              <ChatSidebar hasImage={hasImage} diagnosis={diagnosis} />
             </div>
           </div>
         </div>
