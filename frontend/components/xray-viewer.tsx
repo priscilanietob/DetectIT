@@ -10,14 +10,13 @@ import {
 } from "lucide-react"
 
 interface XrayViewerProps {
-  onImageUpload?: (file: File) => void
-  onPredictionResult?: (message: string) => void
+  onImageUpload?: (file: File, dataUrl: string) => void
 }
 
 const MAGNIFIER_SIZE = 160
 const MAGNIFIER_ZOOM = 2.8
 
-export function XrayViewerWithMagnifier({ onImageUpload, onPredictionResult }: XrayViewerProps) {
+export function XrayViewerWithMagnifier({ onImageUpload }: XrayViewerProps) {
   const [image, setImage] = useState<string | null>(null)
   const [zoom, setZoom] = useState(100)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -32,44 +31,19 @@ export function XrayViewerWithMagnifier({ onImageUpload, onPredictionResult }: X
   const imgRef = useRef<HTMLImageElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0]
-  if (!file) return
-
-  const reader = new FileReader()
-  reader.onload = (ev) => {
-    setImage(ev.target?.result as string)
-    setZoom(100)
-    setPosition({ x: 0, y: 0 })
-    setRotation(0)
-  }
-  reader.readAsDataURL(file)
-
-  onImageUpload?.(file)
-
-  try {
-    const formData = new FormData()
-    formData.append("file", file)
-
-    const response = await fetch("http://127.0.0.1:8000/predict", {
-      method: "POST",
-      body: formData,
-    })
-
-    if (!response.ok) {
-      throw new Error("No se pudo analizar la imagen")
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string
+        setImage(dataUrl)
+        setZoom(100); setPosition({ x: 0, y: 0 }); setRotation(0)
+        onImageUpload?.(file, dataUrl)
+      }
+      reader.readAsDataURL(file)
     }
-
-    const data = await response.json()
-
-    console.log("Resultado del modelo:", data)
-
-onPredictionResult?.(data.cnn_summary)
-  } catch (error) {
-    console.error("Error al conectar con el backend:", error)
-    alert("No se pudo conectar con el modelo. Revisa que el backend esté corriendo.")
   }
-}
 
   const handleZoomIn  = () => setZoom((p) => Math.min(p + 25, 300))
   const handleZoomOut = () => setZoom((p) => Math.max(p - 25, 25))
