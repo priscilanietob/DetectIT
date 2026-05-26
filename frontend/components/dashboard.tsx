@@ -29,33 +29,51 @@ interface CnnResult {
   confidence: number
   probabilities: Record<string, number>
   cnn_summary: string
+  heatmap_base64?: string
 }
 
 export function Dashboard() {
   const { userEmail, logout } = useAuth()
-  const [hasImage, setHasImage]     = useState(false)
-  const [imageData, setImageData]   = useState<string | null>(null)
-  const [cnnResult, setCnnResult]   = useState<CnnResult | null>(null)
+  const [hasImage, setHasImage]       = useState(false)
+  const [imageData, setImageData]     = useState<string | null>(null)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [cnnResult, setCnnResult]     = useState<CnnResult | null>(null)
+  const [heatmapUrl, setHeatmapUrl]   = useState<string | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [currentPage, setCurrentPage] = useState<Page>("dashboard")
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
-  const handleImageUpload = useCallback(async (file: File, dataUrl: string) => {
+  // Solo guarda la imagen — NO dispara el análisis
+  const handleImageUpload = useCallback((file: File, dataUrl: string) => {
     setHasImage(true)
     setImageData(dataUrl)
+    setPendingFile(file)
     setCnnResult(null)
+    setHeatmapUrl(null)
+  }, [])
+
+  // Se ejecuta al pulsar "Analizar"
+  const handleAnalyze = useCallback(async () => {
+    if (!pendingFile || isAnalyzing) return
+    setIsAnalyzing(true)
+    setCnnResult(null)
+    setHeatmapUrl(null)
 
     try {
       const formData = new FormData()
-      formData.append("file", file)
+      formData.append("file", pendingFile)
       const res = await fetch("/api/predict", { method: "POST", body: formData })
       if (res.ok) {
         const data: CnnResult = await res.json()
         setCnnResult(data)
+        if (data.heatmap_base64) setHeatmapUrl(data.heatmap_base64)
       }
     } catch {
-      // Python CNN server not running — chat still works via Gemini vision
+      // Python CNN server not running — chat still works via vision LLM
+    } finally {
+      setIsAnalyzing(false)
     }
-  }, [])
+  }, [pendingFile, isAnalyzing])
 
   const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
     { id: "dashboard", label: "Análisis", icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -187,7 +205,12 @@ export function Dashboard() {
       <main className="flex-1 flex overflow-hidden">
         {/* Xray viewer with magnifier */}
         <div className="flex-1 p-4">
-          <XrayViewerWithMagnifier onImageUpload={handleImageUpload} />
+          <XrayViewerWithMagnifier
+            onImageUpload={handleImageUpload}
+            onAnalyze={handleAnalyze}
+            isAnalyzing={isAnalyzing}
+            heatmapUrl={heatmapUrl}
+          />
         </div>
 
         {/* Chat sidebar — desktop */}

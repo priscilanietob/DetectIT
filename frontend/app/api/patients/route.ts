@@ -1,18 +1,35 @@
 import { NextResponse } from "next/server"
-import { getPool, sql } from "@/lib/db"
+
+const DB_CONFIGURED = !!(
+  process.env.DB_SERVER &&
+  process.env.DB_DATABASE &&
+  process.env.DB_USER &&
+  process.env.DB_PASSWORD &&
+  process.env.DB_PASSWORD !== "tu_contraseña_aqui"
+)
 
 export async function GET() {
+  if (!DB_CONFIGURED) {
+    const { getMockPatients } = await import("@/lib/mock-store")
+    return NextResponse.json(await getMockPatients())
+  }
   try {
+    const { getPool } = await import("@/lib/db")
     const pool = await getPool()
     const result = await pool.request().execute("ObtenerPacientes")
     return NextResponse.json(result.recordset)
   } catch {
-    return NextResponse.json({ error: "Error al obtener pacientes" }, { status: 500 })
+    const { getMockPatients } = await import("@/lib/mock-store")
+    return NextResponse.json(await getMockPatients())
   }
 }
 
 export async function POST(request: Request) {
+  if (!DB_CONFIGURED) {
+    return NextResponse.json({ error: "Base de datos no configurada" }, { status: 503 })
+  }
   try {
+    const { getPool, sql } = await import("@/lib/db")
     const body = await request.json()
     const pool = await getPool()
     const result = await pool

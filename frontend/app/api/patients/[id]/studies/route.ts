@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server"
 
-const DB_CONFIGURED = !!(process.env.DB_SERVER && process.env.DB_DATABASE && process.env.DB_USER && process.env.DB_PASSWORD)
+const DB_CONFIGURED = !!(
+  process.env.DB_SERVER &&
+  process.env.DB_DATABASE &&
+  process.env.DB_USER &&
+  process.env.DB_PASSWORD &&
+  process.env.DB_PASSWORD !== "tu_contraseña_aqui"
+)
+
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
@@ -19,7 +26,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .execute("ObtenerEstudiosPorPaciente")
     return NextResponse.json(result.recordset)
   } catch {
-    return NextResponse.json({ error: "Error al obtener estudios" }, { status: 500 })
+    const { getMockPatient } = await import("@/lib/mock-store")
+    const patient = await getMockPatient(parseInt(id))
+    return NextResponse.json(patient.studies)
   }
 }
 

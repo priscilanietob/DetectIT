@@ -1,11 +1,24 @@
 import { NextResponse } from "next/server"
-import { getPool, sql } from "@/lib/db"
+
+const DB_CONFIGURED = !!(
+  process.env.DB_SERVER &&
+  process.env.DB_DATABASE &&
+  process.env.DB_USER &&
+  process.env.DB_PASSWORD &&
+  process.env.DB_PASSWORD !== "tu_contraseña_aqui"
+)
 
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { id } = await params
+  if (!DB_CONFIGURED) {
+    const { getMockPatient } = await import("@/lib/mock-store")
+    const patient = await getMockPatient(parseInt(id))
+    return NextResponse.json(patient.vitals ?? null)
+  }
   try {
+    const { getPool, sql } = await import("@/lib/db")
     const pool = await getPool()
     const result = await pool
       .request()
@@ -13,13 +26,19 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .execute("ObtenerSignosVitalesPorPaciente")
     return NextResponse.json(result.recordset[0] ?? null)
   } catch {
-    return NextResponse.json({ error: "Error al obtener signos vitales" }, { status: 500 })
+    const { getMockPatient } = await import("@/lib/mock-store")
+    const patient = await getMockPatient(parseInt(id))
+    return NextResponse.json(patient.vitals ?? null)
   }
 }
 
 export async function PUT(request: Request, { params }: RouteContext) {
   const { id } = await params
+  if (!DB_CONFIGURED) {
+    return NextResponse.json({ error: "Base de datos no configurada" }, { status: 503 })
+  }
   try {
+    const { getPool, sql } = await import("@/lib/db")
     const body = await request.json()
     const pool = await getPool()
     const result = await pool

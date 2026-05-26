@@ -1,25 +1,33 @@
 import { NextResponse } from "next/server"
 import { MOCK_RECORDS } from "@/lib/mock-data"
 
-const DB_CONFIGURED = !!(process.env.DB_SERVER && process.env.DB_DATABASE && process.env.DB_USER && process.env.DB_PASSWORD)
+const DB_CONFIGURED = !!(
+  process.env.DB_SERVER &&
+  process.env.DB_DATABASE &&
+  process.env.DB_USER &&
+  process.env.DB_PASSWORD &&
+  process.env.DB_PASSWORD !== "tu_contraseña_aqui"
+)
+
 type RouteContext = { params: Promise<{ id: string }> }
 
+async function getMockRecord(id: number) {
+  const { getMockPatient } = await import("@/lib/mock-store")
+  const patient = await getMockPatient(id)
+  const record = MOCK_RECORDS[id]
+  if (record) return { ...record, patient }
+  return { patient, entries: [] }
+}
+
 export async function GET(_req: Request, { params }: RouteContext) {
-  const routeParams = await params
-  if (!DB_CONFIGURED) {
-    const id = parseInt(routeParams.id)
-    const record = MOCK_RECORDS[id]
-    const { getMockPatient } = await import("@/lib/mock-store")
-    const patient = await getMockPatient(id)
-    if (record) return NextResponse.json({ ...record, patient })
-    return NextResponse.json({ patient, entries: [] })
-  }
+  const { id } = await params
+  if (!DB_CONFIGURED) return NextResponse.json(await getMockRecord(parseInt(id)))
   try {
     const { getPool, sql } = await import("@/lib/db")
     const pool = await getPool()
     const result = await pool
       .request()
-      .input("IdPaciente", sql.Int, parseInt(routeParams.id))
+      .input("IdPaciente", sql.Int, parseInt(id))
       .execute("ObtenerExpedientePorPaciente")
 
     const sets    = result.recordsets as unknown as unknown[][]
@@ -27,7 +35,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const entries = sets[1] ?? []
     return NextResponse.json({ patient, entries })
   } catch {
-    return NextResponse.json({ error: "Error al obtener expediente" }, { status: 500 })
+    return NextResponse.json(await getMockRecord(parseInt(id)))
   }
 }
 

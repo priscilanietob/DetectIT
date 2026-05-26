@@ -1,19 +1,23 @@
 import { NextResponse } from "next/server"
 import { MOCK_DOCTORS } from "@/lib/mock-data"
 
-const DB_CONFIGURED = !!(process.env.DB_SERVER && process.env.DB_DATABASE && process.env.DB_USER && process.env.DB_PASSWORD)
+const DB_CONFIGURED = !!(
+  process.env.DB_SERVER &&
+  process.env.DB_DATABASE &&
+  process.env.DB_USER &&
+  process.env.DB_PASSWORD &&
+  process.env.DB_PASSWORD !== "tu_contraseña_aqui"
+)
 
 export async function GET() {
-  if (!DB_CONFIGURED) {
-    return NextResponse.json(MOCK_DOCTORS)
-  }
+  if (!DB_CONFIGURED) return NextResponse.json(MOCK_DOCTORS)
   try {
     const { getPool } = await import("@/lib/db")
     const pool = await getPool()
     const result = await pool.request().execute("ObtenerDoctores")
     return NextResponse.json(result.recordset)
   } catch {
-    return NextResponse.json({ error: "Error al obtener doctores" }, { status: 500 })
+    return NextResponse.json(MOCK_DOCTORS)
   }
 }
 

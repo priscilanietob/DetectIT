@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -166,32 +168,30 @@ export function ChatSidebar({ hasImage, imageData, cnnResult }: ChatSidebarProps
   return (
     <Card className="flex flex-col h-full min-h-0 border-border bg-card">
       {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-border bg-secondary/30 shrink-0">
-        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary">
-          <Stethoscope className="w-5 h-5 text-primary-foreground" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-card-foreground">AI Diagnostic Assistant</h2>
-          <p className="text-xs text-muted-foreground">Llama 4 · Especializado en radiología</p>
-        </div>
-        {cnnResult && (
-          <div className="flex items-center gap-1 text-xs bg-primary/10 border border-primary/20 rounded-md px-2 py-1">
-            <Brain className="w-3 h-3 text-primary" />
-            <span className="text-primary font-medium">CNN</span>
-            <ConfidenceBadge confidence={cnnResult.confidence} />
+      <div className="flex flex-col gap-2 p-4 border-b border-border bg-secondary/30 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary">
+            <Stethoscope className="w-5 h-5 text-primary-foreground" />
           </div>
-        )}
-      </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-semibold text-card-foreground">AI Diagnostic Assistant</h2>
+            <p className="text-xs text-muted-foreground">Llama 4 · Especializado en radiología</p>
+          </div>
+          {cnnResult && (
+            <div className="flex items-center gap-1 text-xs bg-primary/10 border border-primary/20 rounded-md px-2 py-1">
+              <Brain className="w-3 h-3 text-primary" />
+              <span className="text-primary font-medium">CNN</span>
+              <ConfidenceBadge confidence={cnnResult.confidence} />
+            </div>
+          )}
+        </div>
 
-      {/* Disclaimer */}
-      <div className="mx-3 mt-3 shrink-0">
-        <div className="p-3 rounded-lg bg-accent/10 border border-accent/20">
-          <div className="flex gap-2">
-            <AlertCircle className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-            <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Aviso:</span> Este asistente es solo de apoyo educativo. Todos los hallazgos deben ser verificados por un radiólogo certificado.
-            </p>
-          </div>
+        {/* Disclaimer */}
+        <div className="flex gap-2 px-1">
+          <AlertCircle className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
+          <p className="text-xs text-muted-foreground leading-snug">
+            <span className="font-medium text-foreground">Aviso:</span> Este asistente es solo de apoyo educativo. Todos los hallazgos deben ser verificados por un radiólogo certificado.
+          </p>
         </div>
       </div>
 
@@ -213,7 +213,28 @@ export function ChatSidebar({ hasImage, imageData, cnnResult }: ChatSidebarProps
                   ? "bg-primary text-primary-foreground"
                   : "bg-secondary text-secondary-foreground"
               }`}>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                {message.role === "assistant" ? (
+                  <div className="text-sm leading-relaxed">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        h1: ({ children }) => <p className="text-sm font-bold mt-3 mb-1.5 first:mt-0">{children}</p>,
+                        h2: ({ children }) => <p className="text-sm font-bold mt-2.5 mb-1 first:mt-0">{children}</p>,
+                        h3: ({ children }) => <p className="text-sm font-semibold mt-2 mb-1 first:mt-0">{children}</p>,
+                        p:  ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                        ul: ({ children }) => <ul className="mb-2 pl-4 space-y-0.5 last:mb-0">{children}</ul>,
+                        ol: ({ children }) => <ol className="mb-2 pl-4 list-decimal space-y-0.5 last:mb-0">{children}</ol>,
+                        li: ({ children }) => <li className="list-disc">{children}</li>,
+                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                        hr: () => <hr className="border-border my-2" />,
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="text-sm leading-relaxed">{message.content}</p>
+                )}
                 <p className={`text-xs mt-2 ${message.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
                   {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </p>

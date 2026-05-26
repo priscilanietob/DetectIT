@@ -6,17 +6,20 @@ import { Card } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
 import {
   ZoomIn, ZoomOut, RotateCcw, Upload, Move,
-  Maximize2, Download, RefreshCw, Search,
+  Maximize2, Download, RefreshCw, Search, ScanLine, Loader2,
 } from "lucide-react"
 
 interface XrayViewerProps {
   onImageUpload?: (file: File, dataUrl: string) => void
+  onAnalyze?: () => void
+  isAnalyzing?: boolean
+  heatmapUrl?: string | null
 }
 
 const MAGNIFIER_SIZE = 160
 const MAGNIFIER_ZOOM = 2.8
 
-export function XrayViewerWithMagnifier({ onImageUpload }: XrayViewerProps) {
+export function XrayViewerWithMagnifier({ onImageUpload, onAnalyze, isAnalyzing = false, heatmapUrl }: XrayViewerProps) {
   const [image, setImage] = useState<string | null>(null)
   const [zoom, setZoom] = useState(100)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -26,6 +29,7 @@ export function XrayViewerWithMagnifier({ onImageUpload }: XrayViewerProps) {
   const [magnifierEnabled, setMagnifierEnabled] = useState(false)
   const [magnifierPos, setMagnifierPos] = useState({ x: 0, y: 0 })
   const [showMagnifier, setShowMagnifier] = useState(false)
+  const [heatOpacity, setHeatOpacity] = useState(0)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
@@ -38,7 +42,7 @@ export function XrayViewerWithMagnifier({ onImageUpload }: XrayViewerProps) {
       reader.onload = (ev) => {
         const dataUrl = ev.target?.result as string
         setImage(dataUrl)
-        setZoom(100); setPosition({ x: 0, y: 0 }); setRotation(0)
+        setZoom(100); setPosition({ x: 0, y: 0 }); setRotation(0); setHeatOpacity(0)
         onImageUpload?.(file, dataUrl)
       }
       reader.readAsDataURL(file)
@@ -117,10 +121,33 @@ export function XrayViewerWithMagnifier({ onImageUpload }: XrayViewerProps) {
           <Button variant="outline" size="sm"
             onClick={() => fileInputRef.current?.click()}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
+            disabled={isAnalyzing}
           >
             <Upload className="w-4 h-4 mr-2" />Upload X-Ray
           </Button>
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+
+          {image && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onAnalyze}
+              disabled={isAnalyzing}
+              className="border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-60"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Analizando…
+                </>
+              ) : (
+                <>
+                  <ScanLine className="w-4 h-4 mr-2" />
+                  Analizar
+                </>
+              )}
+            </Button>
+          )}
         </div>
 
         {image && (
@@ -143,6 +170,21 @@ export function XrayViewerWithMagnifier({ onImageUpload }: XrayViewerProps) {
             >
               <Search className="w-4 h-4" />
             </Button>
+
+            {heatmapUrl && (
+              <>
+                <div className="w-px h-6 bg-border mx-1" />
+                <span className="text-xs text-muted-foreground">Original</span>
+                <div className="w-28 px-2">
+                  <Slider
+                    value={[heatOpacity]}
+                    onValueChange={(v) => setHeatOpacity(v[0])}
+                    min={0} max={100} step={1}
+                  />
+                </div>
+                <span className="text-xs text-orange-400 font-medium">Heatmap</span>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -161,17 +203,24 @@ export function XrayViewerWithMagnifier({ onImageUpload }: XrayViewerProps) {
         {image ? (
           <>
             <div className="absolute inset-0 flex items-center justify-center">
-              <img
-                ref={imgRef}
-                src={image}
-                alt="X-Ray"
-                className="max-w-none select-none"
-                style={{
-                  transform: `translate(${position.x}px, ${position.y}px) scale(${zoom / 100}) rotate(${rotation}deg)`,
-                  transformOrigin: "center center",
-                }}
-                draggable={false}
-              />
+              <div style={{ position: "relative", transform: `translate(${position.x}px, ${position.y}px) scale(${zoom / 100}) rotate(${rotation}deg)`, transformOrigin: "center center" }}>
+                <img
+                  ref={imgRef}
+                  src={image}
+                  alt="X-Ray"
+                  className="max-w-none select-none block"
+                  draggable={false}
+                />
+                {heatmapUrl && heatOpacity > 0 && (
+                  <img
+                    src={heatmapUrl}
+                    alt="Heatmap"
+                    className="absolute inset-0 w-full h-full max-w-none select-none pointer-events-none"
+                    style={{ opacity: heatOpacity / 100 }}
+                    draggable={false}
+                  />
+                )}
+              </div>
             </div>
 
             {magnifierEnabled && showMagnifier && (
@@ -193,9 +242,16 @@ export function XrayViewerWithMagnifier({ onImageUpload }: XrayViewerProps) {
               </>
             )}
 
-            {magnifierEnabled && (
+            {magnifierEnabled && !isAnalyzing && (
               <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5">
                 <Search className="w-3 h-3" /> Lupa activa — mueve el cursor sobre la imagen
+              </div>
+            )}
+
+            {isAnalyzing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm z-30 pointer-events-none">
+                <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mb-3" />
+                <p className="text-white text-sm font-medium">Analizando imagen…</p>
               </div>
             )}
           </>
@@ -224,6 +280,12 @@ export function XrayViewerWithMagnifier({ onImageUpload }: XrayViewerProps) {
             <span>Zoom: {zoom}%</span>
             <span>Rotación: {rotation}°</span>
             {magnifierEnabled && <span className="text-primary flex items-center gap-1"><Search className="w-3 h-3" /> Lupa ×{MAGNIFIER_ZOOM}</span>}
+            {heatmapUrl && heatOpacity > 0 && (
+              <span className="text-orange-400">Heatmap: {heatOpacity}%</span>
+            )}
+            {heatmapUrl && heatOpacity === 0 && (
+              <span className="text-muted-foreground">Heatmap disponible — usa el slider</span>
+            )}
           </div>
           <Button variant="ghost" size="sm" className="h-6 text-xs">
             <Download className="w-3 h-3 mr-1" />Export

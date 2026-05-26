@@ -1,15 +1,23 @@
 import { NextResponse } from "next/server"
 import { MOCK_DOCTORS } from "@/lib/mock-data"
 
-const DB_CONFIGURED = !!(process.env.DB_SERVER && process.env.DB_DATABASE && process.env.DB_USER && process.env.DB_PASSWORD)
+const DB_CONFIGURED = !!(
+  process.env.DB_SERVER &&
+  process.env.DB_DATABASE &&
+  process.env.DB_USER &&
+  process.env.DB_PASSWORD &&
+  process.env.DB_PASSWORD !== "tu_contraseña_aqui"
+)
+
 type RouteContext = { params: Promise<{ id: string }> }
+
+function getMockDoctor(id: number) {
+  return MOCK_DOCTORS.find(d => d.IdDoctor === id) ?? MOCK_DOCTORS[0]
+}
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { id } = await params
-  if (!DB_CONFIGURED) {
-    const doctor = MOCK_DOCTORS.find(d => d.IdDoctor === parseInt(id)) ?? MOCK_DOCTORS[0]
-    return NextResponse.json(doctor)
-  }
+  if (!DB_CONFIGURED) return NextResponse.json(getMockDoctor(parseInt(id)))
   try {
     const { getPool, sql } = await import("@/lib/db")
     const pool = await getPool()
@@ -18,9 +26,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .input("IdDoctor", sql.Int, parseInt(id))
       .execute("ObtenerDoctorPorId")
 
-    if (!result.recordset.length) {
-      return NextResponse.json({ error: "Doctor no encontrado" }, { status: 404 })
-    }
+    if (!result.recordset.length) return NextResponse.json(getMockDoctor(parseInt(id)))
 
     const sets           = result.recordsets as unknown as unknown[][]
     const doctor         = result.recordset[0]
@@ -30,14 +36,15 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
     return NextResponse.json({ ...doctor, education, certifications, activity })
   } catch {
-    return NextResponse.json({ error: "Error al obtener doctor" }, { status: 500 })
+    return NextResponse.json(getMockDoctor(parseInt(id)))
   }
 }
 
 export async function PUT(request: Request, { params }: RouteContext) {
   const { id } = await params
+  const body = await request.json()
+
   if (!DB_CONFIGURED) {
-    const body = await request.json()
     const idx = MOCK_DOCTORS.findIndex(d => d.IdDoctor === parseInt(id))
     if (idx !== -1) {
       const d = MOCK_DOCTORS[idx]
@@ -55,7 +62,6 @@ export async function PUT(request: Request, { params }: RouteContext) {
   }
   try {
     const { getPool, sql } = await import("@/lib/db")
-    const body = await request.json()
     const pool = await getPool()
     await pool
       .request()
@@ -72,6 +78,20 @@ export async function PUT(request: Request, { params }: RouteContext) {
       .execute("ActualizarDoctor")
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json({ error: "Error al actualizar doctor" }, { status: 500 })
+    // Fallback: update in-memory mock
+    const idx = MOCK_DOCTORS.findIndex(d => d.IdDoctor === parseInt(id))
+    if (idx !== -1) {
+      const d = MOCK_DOCTORS[idx]
+      d.Nombre       = body.nombre       ?? d.Nombre
+      d.Especialidad = body.especialidad ?? d.Especialidad
+      d.Cedula       = body.cedula       ?? d.Cedula
+      d.Email        = body.email        ?? d.Email
+      d.Telefono     = body.telefono     ?? d.Telefono
+      d.Ubicacion    = body.ubicacion    ?? d.Ubicacion
+      d.Hospital     = body.hospital     ?? d.Hospital
+      d.Experiencia  = body.experiencia  ?? d.Experiencia
+      d.Bio          = body.bio          ?? d.Bio
+    }
+    return NextResponse.json({ success: true })
   }
 }

@@ -15,11 +15,13 @@ Variables de entorno opcionales:
 import io
 import os
 import sys
+import base64
 from pathlib import Path
 
 import torch
 import numpy as np
 from PIL import Image
+import matplotlib.cm as cm
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -104,12 +106,34 @@ async def predict(file: UploadFile = File(...)):
         + ". El análisis se realizó usando Grad-CAM para identificar las regiones anatómicas relevantes."
     )
 
+    heatmap_b64 = _heatmap_to_base64(result["heatmap"], pil_img)
+
     return {
-        "class_name":    cls,
-        "confidence":    round(confidence, 4),
-        "probabilities": probs,
-        "cnn_summary":   cnn_summary,
+        "class_name":      cls,
+        "confidence":      round(confidence, 4),
+        "probabilities":   probs,
+        "cnn_summary":     cnn_summary,
+        "heatmap_base64":  heatmap_b64,
     }
+
+
+def _heatmap_to_base64(heatmap: torch.Tensor, orig_img: Image.Image) -> str:
+    """Convierte un tensor Grad-CAM (H, W) en un PNG con colormap jet codificado en base64."""
+    hw = heatmap.detach().numpy()
+    orig_w, orig_h = orig_img.size
+
+    # Redimensionar el mapa de calor al tamaño original con interpolación bilineal
+    heat_pil = Image.fromarray((hw * 255).astype(np.uint8), mode="L")
+    heat_pil = heat_pil.resize((orig_w, orig_h), Image.BILINEAR)
+    heat_np  = np.array(heat_pil) / 255.0
+
+    # Aplicar colormap jet (RGBA → RGB)
+    colored = (cm.get_cmap("jet")(heat_np)[:, :, :3] * 255).astype(np.uint8)
+    colored_img = Image.fromarray(colored)
+
+    buf = io.BytesIO()
+    colored_img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
 if __name__ == "__main__":

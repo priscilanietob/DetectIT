@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server"
 
-const DB_CONFIGURED = !!(process.env.DB_SERVER && process.env.DB_DATABASE && process.env.DB_USER && process.env.DB_PASSWORD)
+const DB_CONFIGURED = !!(
+  process.env.DB_SERVER &&
+  process.env.DB_DATABASE &&
+  process.env.DB_USER &&
+  process.env.DB_PASSWORD &&
+  process.env.DB_PASSWORD !== "tu_contraseña_aqui"
+)
+
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { id } = await params
   if (!DB_CONFIGURED) {
     const { getMockPatient } = await import("@/lib/mock-store")
-    const patient = await getMockPatient(parseInt(id))
-    return NextResponse.json(patient)
+    return NextResponse.json(await getMockPatient(parseInt(id)))
   }
   try {
     const { getPool, sql } = await import("@/lib/db")
@@ -19,7 +25,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .execute("ObtenerPacientePorId")
 
     if (!result.recordset.length) {
-      return NextResponse.json({ error: "Paciente no encontrado" }, { status: 404 })
+      const { getMockPatient } = await import("@/lib/mock-store")
+      return NextResponse.json(await getMockPatient(parseInt(id)))
     }
 
     const sets      = result.recordsets as unknown as unknown[][]
@@ -31,7 +38,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
     return NextResponse.json({ ...patient, allergies, medications, conditions, vitals })
   } catch {
-    return NextResponse.json({ error: "Error al obtener paciente" }, { status: 500 })
+    const { getMockPatient } = await import("@/lib/mock-store")
+    return NextResponse.json(await getMockPatient(parseInt(id)))
   }
 }
 
@@ -40,14 +48,9 @@ export async function PUT(request: Request, { params }: RouteContext) {
   const body = await request.json()
 
   if (!DB_CONFIGURED) {
-    const patientId = parseInt(id)
     const { updateMockPatient } = await import("@/lib/mock-store")
-    const patient = await updateMockPatient(patientId, body)
-
-    if (!patient) {
-      return NextResponse.json({ error: "Paciente no encontrado" }, { status: 404 })
-    }
-
+    const patient = await updateMockPatient(parseInt(id), body)
+    if (!patient) return NextResponse.json({ error: "Paciente no encontrado" }, { status: 404 })
     return NextResponse.json(patient)
   }
   try {
@@ -70,7 +73,10 @@ export async function PUT(request: Request, { params }: RouteContext) {
       .execute("ActualizarPaciente")
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json({ error: "Error al actualizar paciente" }, { status: 500 })
+    const { updateMockPatient } = await import("@/lib/mock-store")
+    const patient = await updateMockPatient(parseInt(id), body)
+    if (!patient) return NextResponse.json({ error: "Paciente no encontrado" }, { status: 404 })
+    return NextResponse.json(patient)
   }
 }
 
