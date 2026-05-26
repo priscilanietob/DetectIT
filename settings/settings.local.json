@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Bash(git add *)",
+      "Bash(findstr /i \"groq\")",
+      "Bash(npm install *)",
+      "Bash(dir \"C:\\\\Users\\\\prisc\\\\OneDrive\\\\Documentos\\\\GitHub\\\\DetectIT\" /a)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\prisc\\\\OneDrive\\\\Documentos\\\\GitHub\\\\DetectIT\" -Force -Recurse -Directory | Where-Object { $_.Name -eq \"claude\" -or $_.Name -eq \".claude\" } | Select-Object FullName)"
+    ]
+  }
+}
