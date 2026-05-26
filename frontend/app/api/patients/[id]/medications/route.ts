@@ -1,73 +1,41 @@
 import { NextResponse } from "next/server"
-
-const DB_CONFIGURED = !!(
-  process.env.DB_SERVER &&
-  process.env.DB_DATABASE &&
-  process.env.DB_USER &&
-  process.env.DB_PASSWORD &&
-  process.env.DB_PASSWORD !== "tu_contraseña_aqui"
-)
+import { getDb } from "@/lib/sqlite"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
-  const { id } = await params
-  if (!DB_CONFIGURED) {
-    const { getMockPatient } = await import("@/lib/mock-store")
-    const patient = await getMockPatient(parseInt(id))
-    return NextResponse.json(patient.medications)
-  }
   try {
-    const { getPool, sql } = await import("@/lib/db")
-    const pool = await getPool()
-    const result = await pool
-      .request()
-      .input("IdPaciente", sql.Int, parseInt(id))
-      .execute("ObtenerMedicamentosPorPaciente")
-    return NextResponse.json(result.recordset)
-  } catch {
-    const { getMockPatient } = await import("@/lib/mock-store")
-    const patient = await getMockPatient(parseInt(id))
-    return NextResponse.json(patient.medications)
+    const { id } = await params
+    const rows   = getDb().prepare("SELECT * FROM Medicamentos WHERE IdPaciente = ? ORDER BY IdMedicamento").all(parseInt(id))
+    return NextResponse.json(rows)
+  } catch (err) {
+    console.error("[GET /api/patients/[id]/medications]", err)
+    return NextResponse.json({ error: "Error al obtener medicamentos" }, { status: 500 })
   }
 }
 
 export async function POST(request: Request, { params }: RouteContext) {
-  const { id } = await params
-  if (!DB_CONFIGURED) {
-    return NextResponse.json({ error: "Base de datos no configurada" }, { status: 503 })
-  }
   try {
-    const { getPool, sql } = await import("@/lib/db")
-    const body = await request.json()
-    const pool = await getPool()
-    const result = await pool
-      .request()
-      .input("IdPaciente", sql.Int,           parseInt(id))
-      .input("Nombre",     sql.NVarChar(200), body.nombre)
-      .input("Frecuencia", sql.NVarChar(100), body.frecuencia ?? null)
-      .input("Desde",      sql.NVarChar(20),  body.desde ?? null)
-      .execute("InsertarMedicamento")
-    return NextResponse.json({ idMedicamento: result.recordset[0].IdMedicamento }, { status: 201 })
-  } catch {
+    const { id } = await params
+    const body   = await request.json()
+    const result = getDb().prepare(`
+      INSERT INTO Medicamentos (IdPaciente, Nombre, Frecuencia, Desde)
+      VALUES (?, ?, ?, ?)
+    `).run(parseInt(id), body.nombre, body.frecuencia ?? null, body.desde ?? null)
+    return NextResponse.json({ idMedicamento: result.lastInsertRowid }, { status: 201 })
+  } catch (err) {
+    console.error("[POST /api/patients/[id]/medications]", err)
     return NextResponse.json({ error: "Error al insertar medicamento" }, { status: 500 })
   }
 }
 
 export async function DELETE(request: Request) {
-  if (!DB_CONFIGURED) {
-    return NextResponse.json({ error: "Base de datos no configurada" }, { status: 503 })
-  }
   try {
-    const { getPool, sql } = await import("@/lib/db")
     const { idMedicamento } = await request.json()
-    const pool = await getPool()
-    await pool
-      .request()
-      .input("IdMedicamento", sql.Int, idMedicamento)
-      .execute("EliminarMedicamento")
+    getDb().prepare("DELETE FROM Medicamentos WHERE IdMedicamento = ?").run(idMedicamento)
     return NextResponse.json({ success: true })
-  } catch {
+  } catch (err) {
+    console.error("[DELETE /api/patients/[id]/medications]", err)
     return NextResponse.json({ error: "Error al eliminar medicamento" }, { status: 500 })
   }
 }

@@ -1,53 +1,45 @@
 import { NextResponse } from "next/server"
-
-const DB_CONFIGURED = !!(
-  process.env.DB_SERVER &&
-  process.env.DB_DATABASE &&
-  process.env.DB_USER &&
-  process.env.DB_PASSWORD &&
-  process.env.DB_PASSWORD !== "tu_contraseña_aqui"
-)
+import { getDb } from "@/lib/sqlite"
 
 export async function GET() {
-  if (!DB_CONFIGURED) {
-    const { getMockPatients } = await import("@/lib/mock-store")
-    return NextResponse.json(await getMockPatients())
-  }
   try {
-    const { getPool } = await import("@/lib/db")
-    const pool = await getPool()
-    const result = await pool.request().execute("ObtenerPacientes")
-    return NextResponse.json(result.recordset)
-  } catch {
-    const { getMockPatients } = await import("@/lib/mock-store")
-    return NextResponse.json(await getMockPatients())
+    const db = getDb()
+    const patients = db.prepare(`
+      SELECT p.*, d.Nombre AS NombreDoctor
+      FROM Pacientes p
+      LEFT JOIN Doctores d ON p.IdDoctor = d.IdDoctor
+      ORDER BY p.IdPaciente
+    `).all()
+    return NextResponse.json(patients)
+  } catch (err) {
+    console.error("[GET /api/patients]", err)
+    return NextResponse.json({ error: "Error al obtener pacientes" }, { status: 500 })
   }
 }
 
 export async function POST(request: Request) {
-  if (!DB_CONFIGURED) {
-    return NextResponse.json({ error: "Base de datos no configurada" }, { status: 503 })
-  }
   try {
-    const { getPool, sql } = await import("@/lib/db")
+    const db   = getDb()
     const body = await request.json()
-    const pool = await getPool()
-    const result = await pool
-      .request()
-      .input("Nombre",             sql.NVarChar(100), body.nombre)
-      .input("Edad",               sql.Int,           body.edad)
-      .input("Sexo",               sql.NVarChar(10),  body.sexo)
-      .input("FechaNacimiento",    sql.Date,          body.fechaNacimiento)
-      .input("TipoSangre",         sql.NVarChar(5),   body.tipoSangre ?? null)
-      .input("Email",              sql.NVarChar(100), body.email ?? null)
-      .input("Telefono",           sql.NVarChar(20),  body.telefono ?? null)
-      .input("Ubicacion",          sql.NVarChar(200), body.ubicacion ?? null)
-      .input("Seguro",             sql.NVarChar(100), body.seguro ?? null)
-      .input("ContactoEmergencia", sql.NVarChar(100), body.contactoEmergencia ?? null)
-      .input("IdDoctor",           sql.Int,           body.idDoctor ?? null)
-      .execute("InsertarPaciente")
-    return NextResponse.json({ idPaciente: result.recordset[0].IdPaciente }, { status: 201 })
-  } catch {
+    const result = db.prepare(`
+      INSERT INTO Pacientes (Nombre, Edad, Sexo, FechaNacimiento, TipoSangre, Email, Telefono, Ubicacion, Seguro, ContactoEmergencia, IdDoctor)
+      VALUES (@nombre, @edad, @sexo, @fechaNacimiento, @tipoSangre, @email, @telefono, @ubicacion, @seguro, @contactoEmergencia, @idDoctor)
+    `).run({
+      nombre:             body.nombre,
+      edad:               body.edad,
+      sexo:               body.sexo,
+      fechaNacimiento:    body.fechaNacimiento,
+      tipoSangre:         body.tipoSangre         ?? null,
+      email:              body.email              ?? null,
+      telefono:           body.telefono           ?? null,
+      ubicacion:          body.ubicacion          ?? null,
+      seguro:             body.seguro             ?? null,
+      contactoEmergencia: body.contactoEmergencia ?? null,
+      idDoctor:           body.idDoctor           ?? null,
+    })
+    return NextResponse.json({ idPaciente: result.lastInsertRowid }, { status: 201 })
+  } catch (err) {
+    console.error("[POST /api/patients]", err)
     return NextResponse.json({ error: "Error al insertar paciente" }, { status: 500 })
   }
 }

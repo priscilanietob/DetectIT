@@ -5,6 +5,16 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   ZoomIn, ZoomOut, RotateCcw, Upload, Move,
   Maximize2, Download, RefreshCw, Search, ScanLine, Loader2,
 } from "lucide-react"
@@ -12,6 +22,7 @@ import {
 interface XrayViewerProps {
   onImageUpload?: (file: File, dataUrl: string) => void
   onAnalyze?: () => void
+  onNewImage?: () => void
   isAnalyzing?: boolean
   heatmapUrl?: string | null
 }
@@ -19,7 +30,7 @@ interface XrayViewerProps {
 const MAGNIFIER_SIZE = 160
 const MAGNIFIER_ZOOM = 2.8
 
-export function XrayViewerWithMagnifier({ onImageUpload, onAnalyze, isAnalyzing = false, heatmapUrl }: XrayViewerProps) {
+export function XrayViewerWithMagnifier({ onImageUpload, onAnalyze, onNewImage, isAnalyzing = false, heatmapUrl }: XrayViewerProps) {
   const [image, setImage] = useState<string | null>(null)
   const [zoom, setZoom] = useState(100)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -30,23 +41,50 @@ export function XrayViewerWithMagnifier({ onImageUpload, onAnalyze, isAnalyzing 
   const [magnifierPos, setMagnifierPos] = useState({ x: 0, y: 0 })
   const [showMagnifier, setShowMagnifier] = useState(false)
   const [heatOpacity, setHeatOpacity] = useState(0)
+  const [confirmOpen, setConfirmOpen]       = useState(false)
+  const [pendingNewFile, setPendingNewFile] = useState<File | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const loadFile = useCallback((file: File) => {
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string
+      setImage(dataUrl)
+      setZoom(100); setPosition({ x: 0, y: 0 }); setRotation(0); setHeatOpacity(0)
+      onImageUpload?.(file, dataUrl)
+    }
+    reader.readAsDataURL(file)
+    // Limpia el input para poder re-seleccionar el mismo archivo si se quiere
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }, [onImageUpload])
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string
-        setImage(dataUrl)
-        setZoom(100); setPosition({ x: 0, y: 0 }); setRotation(0); setHeatOpacity(0)
-        onImageUpload?.(file, dataUrl)
-      }
-      reader.readAsDataURL(file)
+    if (!file) return
+    // Si ya hay imagen cargada, pedimos confirmación antes de reemplazar
+    if (image) {
+      setPendingNewFile(file)
+      setConfirmOpen(true)
+    } else {
+      loadFile(file)
     }
+  }
+
+  const handleConfirmNewImage = () => {
+    if (!pendingNewFile) return
+    onNewImage?.()          // reinicia chat y estado en el padre
+    loadFile(pendingNewFile)
+    setPendingNewFile(null)
+    setConfirmOpen(false)
+  }
+
+  const handleCancelNewImage = () => {
+    setPendingNewFile(null)
+    setConfirmOpen(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
   const handleZoomIn  = () => setZoom((p) => Math.min(p + 25, 300))
@@ -114,6 +152,28 @@ export function XrayViewerWithMagnifier({ onImageUpload, onAnalyze, isAnalyzing 
   }
 
   return (
+    <>
+    {/* Diálogo de confirmación al reemplazar imagen */}
+    <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿Cargar nueva imagen?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Si subes una nueva radiografía, la imagen actual, el análisis y todo el historial del chat
+            se reiniciarán. Se generará un diagnóstico nuevo desde cero.
+            <br /><br />
+            ¿Deseas continuar?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={handleCancelNewImage}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirmNewImage}>
+            Sí, cargar nueva imagen
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
     <Card className="flex flex-col h-full border-border bg-card overflow-hidden">
       {/* Toolbar */}
       <div className="flex items-center justify-between p-3 border-b border-border bg-secondary/30">
@@ -293,6 +353,7 @@ export function XrayViewerWithMagnifier({ onImageUpload, onAnalyze, isAnalyzing 
         </div>
       )}
     </Card>
+    </>
   )
 }
 

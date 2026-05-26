@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /c/Users/prisc/OneDrive/Documentos/GitHub/DetectIT/backend && find . -type f -name \"*.py\" | head -20)"
+    ]
+  }
+}

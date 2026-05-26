@@ -40,6 +40,7 @@ export function Dashboard() {
   const [cnnResult, setCnnResult]     = useState<CnnResult | null>(null)
   const [heatmapUrl, setHeatmapUrl]   = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [chatKey, setChatKey]         = useState(0)
   const [currentPage, setCurrentPage] = useState<Page>("dashboard")
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
@@ -50,6 +51,17 @@ export function Dashboard() {
     setPendingFile(file)
     setCnnResult(null)
     setHeatmapUrl(null)
+  }, [])
+
+  // Llamado cuando el usuario confirma cargar una imagen nueva — reinicia todo
+  const handleNewImage = useCallback(() => {
+    setHasImage(false)
+    setImageData(null)
+    setPendingFile(null)
+    setCnnResult(null)
+    setHeatmapUrl(null)
+    setIsAnalyzing(false)
+    setChatKey((k) => k + 1)   // fuerza remount del chat → historial limpio
   }, [])
 
   // Se ejecuta al pulsar "Analizar"
@@ -208,6 +220,7 @@ export function Dashboard() {
           <XrayViewerWithMagnifier
             onImageUpload={handleImageUpload}
             onAnalyze={handleAnalyze}
+            onNewImage={handleNewImage}
             isAnalyzing={isAnalyzing}
             heatmapUrl={heatmapUrl}
           />
@@ -215,13 +228,13 @@ export function Dashboard() {
 
         {/* Chat sidebar — desktop */}
         <div className="w-[380px] border-l border-border p-4 hidden lg:block">
-          <ChatSidebar hasImage={hasImage} imageData={imageData} cnnResult={cnnResult} />
+          <ChatSidebar key={chatKey} hasImage={hasImage} imageData={imageData} cnnResult={cnnResult} />
         </div>
       </main>
 
       {/* Mobile floating chat button */}
       <div className="lg:hidden fixed bottom-4 right-4">
-        <MobileChatButton hasImage={hasImage} imageData={imageData} cnnResult={cnnResult} />
+        <MobileChatButton key={chatKey} hasImage={hasImage} imageData={imageData} cnnResult={cnnResult} />
       </div>
     </div>
   )

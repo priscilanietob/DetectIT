@@ -1,48 +1,38 @@
 import { NextResponse } from "next/server"
-import { MOCK_DOCTORS } from "@/lib/mock-data"
-
-const DB_CONFIGURED = !!(
-  process.env.DB_SERVER &&
-  process.env.DB_DATABASE &&
-  process.env.DB_USER &&
-  process.env.DB_PASSWORD &&
-  process.env.DB_PASSWORD !== "tu_contraseña_aqui"
-)
+import { getDb } from "@/lib/sqlite"
 
 export async function GET() {
-  if (!DB_CONFIGURED) return NextResponse.json(MOCK_DOCTORS)
   try {
-    const { getPool } = await import("@/lib/db")
-    const pool = await getPool()
-    const result = await pool.request().execute("ObtenerDoctores")
-    return NextResponse.json(result.recordset)
-  } catch {
-    return NextResponse.json(MOCK_DOCTORS)
+    const db = getDb()
+    const doctors = db.prepare("SELECT * FROM Doctores ORDER BY IdDoctor").all()
+    return NextResponse.json(doctors)
+  } catch (err) {
+    console.error("[GET /api/doctors]", err)
+    return NextResponse.json({ error: "Error al obtener doctores" }, { status: 500 })
   }
 }
 
 export async function POST(request: Request) {
-  if (!DB_CONFIGURED) {
-    return NextResponse.json({ error: "Base de datos no configurada" }, { status: 503 })
-  }
   try {
-    const { getPool, sql } = await import("@/lib/db")
+    const db   = getDb()
     const body = await request.json()
-    const pool = await getPool()
-    const result = await pool
-      .request()
-      .input("Nombre",       sql.NVarChar(100), body.nombre)
-      .input("Especialidad", sql.NVarChar(100), body.especialidad)
-      .input("Cedula",       sql.NVarChar(50),  body.cedula)
-      .input("Email",        sql.NVarChar(100), body.email)
-      .input("Telefono",     sql.NVarChar(20),  body.telefono ?? null)
-      .input("Ubicacion",    sql.NVarChar(200), body.ubicacion ?? null)
-      .input("Hospital",     sql.NVarChar(200), body.hospital ?? null)
-      .input("Experiencia",  sql.NVarChar(50),  body.experiencia ?? null)
-      .input("Bio",          sql.NVarChar(sql.MAX), body.bio ?? null)
-      .execute("InsertarDoctor")
-    return NextResponse.json({ idDoctor: result.recordset[0].IdDoctor }, { status: 201 })
-  } catch {
+    const result = db.prepare(`
+      INSERT INTO Doctores (Nombre, Especialidad, Cedula, Email, Telefono, Ubicacion, Hospital, Experiencia, Bio)
+      VALUES (@nombre, @especialidad, @cedula, @email, @telefono, @ubicacion, @hospital, @experiencia, @bio)
+    `).run({
+      nombre:       body.nombre,
+      especialidad: body.especialidad ?? "",
+      cedula:       body.cedula       ?? "",
+      email:        body.email        ?? "",
+      telefono:     body.telefono     ?? null,
+      ubicacion:    body.ubicacion    ?? null,
+      hospital:     body.hospital     ?? null,
+      experiencia:  body.experiencia  ?? null,
+      bio:          body.bio          ?? null,
+    })
+    return NextResponse.json({ idDoctor: result.lastInsertRowid }, { status: 201 })
+  } catch (err) {
+    console.error("[POST /api/doctors]", err)
     return NextResponse.json({ error: "Error al insertar doctor" }, { status: 500 })
   }
 }
